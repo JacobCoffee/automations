@@ -127,7 +127,7 @@ class CommitNodesResults(msgspec.Struct, rename="camel"):
 
 def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
     with requests.Session() as session:
-        search = f"msgspec updated:>={after.date()}"
+        search = f"litestar updated:>={after.date()}"
         items = []
         # Fetch recent issues, PRs, and discussions
         for file in ["issues.graphql", "discussions.graphql"]:
@@ -175,7 +175,7 @@ def fetch_recent_commits(token: str, after: datetime.datetime) -> list[Commit]:
 
     with requests.Session() as session:
         # Fetch recent commits. This isn't exposed through graphql currently.
-        query = quote(f"msgspec committer-date:>={after.date()}")
+        query = quote(f"litestar committer-date:>={after.date()}")
         resp = session.get(  # type: ignore
             (
                 f"https://api.github.com/search/commits"
