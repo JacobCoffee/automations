@@ -21,17 +21,19 @@ import requests
 ROOT = Path(__file__).absolute().parent.parent
 
 IGNORE_AUTHORS = {
-    "jcrist",
+    "litestar-org",
+    "JacobCoffee",
+    "provinzkraut",
+    "alc-alc",
+    "guacs",
+    "peterschutt",
+    "cofin",
     "dependabot",
-    "renovate",
-    "phillip-ground",
-    "ibis-squawk-bot",
 }
 
 IGNORE_REPOS = {
-    "jcrist/msgspec",
-    "conda-forge/msgspec-feedstock",
-    "NixOS/nixpkgs",
+    "litestar-org/msgspec",
+    "conda-forge/litestar-feedstock",
 }
 
 
