@@ -323,7 +323,7 @@ def main() -> None:
     logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
 
     today = datetime.date.today()
-    yesterday = today - datetime.timedelta(days=14)
+    yesterday = today - datetime.timedelta(days=1)
     after = datetime.datetime.combine(
         yesterday, datetime.time(14, tzinfo=datetime.timezone.utc)
     )
