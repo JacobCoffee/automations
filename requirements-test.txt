@@ -1,3 +1,4 @@
 -r github-digest/requirements.txt
 types-requests
 mypy
+pre-commit

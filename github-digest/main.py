@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-import argparse
+import contextlib
 import datetime
-import html
 import os
-import smtplib
-import ssl
 
 from collections import defaultdict
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from pathlib import Path
-from typing import Literal, Iterator
+from typing import Literal
 from urllib.parse import quote
 
 import msgspec
 import requests
-
 
 ROOT = Path(__file__).absolute().parent.parent
 
@@ -176,7 +170,7 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
 
 
 def fetch_recent_commits(token: str, after: datetime.datetime) -> list[Commit]:
-    commits = []
+    commits: list[Commit] = []
 
     with requests.Session() as session:
         # Fetch recent commits. This isn't exposed through graphql currently.
@@ -196,26 +190,7 @@ def fetch_recent_commits(token: str, after: datetime.datetime) -> list[Commit]:
         commit_search = msgspec.json.decode(resp.content, type=CommitSearchResults)
 
         if commit_search.items:
-            node_ids = [commit.node_id for commit in commit_search.items]
-
-            # Filter out commits that have an associated PR. This can only be
-            # done by graphql.
-            with open(ROOT / "github-digest" / "commits.graphql", "r") as f:
-                template = f.read()
-            query = template % msgspec.json.encode(node_ids).decode()
-            resp = session.post(  # type: ignore
-                "https://api.github.com/graphql",
-                headers={"Authorization": f"bearer {token}"},
-                json={"query": query},
-            )
-            resp.raise_for_status()
-            nodes = msgspec.json.decode(
-                resp.content, type=CommitNodesResults
-            ).data.nodes
-            for commit, node in zip(commit_search.items, nodes):
-                if node.associated_pull_requests.total_count == 0:
-                    commits.append(commit)
-
+            filter_commits_with_associated_pr(commit_search, session, token, commits)
     return [
         commit
         for commit in commits
@@ -225,106 +200,69 @@ def fetch_recent_commits(token: str, after: datetime.datetime) -> list[Commit]:
     ]
 
 
-def format_plain(groups: dict[str, list[Item | Commit]]) -> str:
-    def gen() -> Iterator[str]:
-        first = True
-        for repo, items in sorted(groups.items()):
-            if not first:
-                yield ""
+def filter_commits_with_associated_pr(commit_search, session, token, commits):
+    """Filter out commits that have an associated PR."""
+    node_ids = [commit.node_id for commit in commit_search.items]
+
+    # Filter out commits that have an associated PR. This can only be
+    # done by graphql.
+    with open(ROOT / "github-digest" / "commits.graphql", "r") as f:
+        template = f.read()
+    query = template % msgspec.json.encode(node_ids).decode()
+    resp = session.post(  # type: ignore
+        "https://api.github.com/graphql",
+        headers={"Authorization": f"bearer {token}"},
+        json={"query": query},
+    )
+    resp.raise_for_status()
+    nodes = msgspec.json.decode(resp.content, type=CommitNodesResults).data.nodes
+    for commit, node in zip(commit_search.items, nodes):
+        if node.associated_pull_requests.total_count == 0:
+            commits.append(commit)
+
+
+def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
+    embed = {
+        "title": "GitHub Search Digest: litestar",
+        "description": "thx jim :)",
+        "color": 0xEDB641,
+        "fields": [],
+    }
+
+    for repo, items in sorted(groups.items()):
+        field = {"name": repo, "value": "", "inline": False}
+        for item in items:
+            if isinstance(item, Item):
+                label = "PR" if item.type == "PullRequest" else item.type
+                count = item.comments.total_count + item.reviews.total_count
+                suffix = f" ({count} comments)" if count else ""
+                field["value"] += (  # type: ignore[operator]
+                    f"- [{label} #{item.number}]({item.url}): {item.title}{suffix}\n"
+                )
             else:
-                first = False
-            yield f"**{repo}**"
-            for item in items:
-                if isinstance(item, Item):
-                    label = "PR" if item.type == "PullRequest" else item.type
-                    yield f"- {label} #{item.number}: {item.title} <{item.url}>"
-                else:
-                    yield (
-                        f"- Commit {item.sha[:8]}: {item.info.title} <{item.html_url}>"
-                    )
+                field["value"] += (  # type: ignore[operator]
+                    f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"
+                )
+        embed["fields"].append(field)  # type: ignore[attr-defined]
 
-    return "\n".join(gen())
+    return embed
 
 
-def format_html(groups: dict[str, list[Item | Commit]]) -> str:
-    def gen() -> Iterator[str]:
-        first = True
-        yield '<div dir="ltr">'
-        for repo, items in sorted(groups.items()):
-            if not first:
-                yield "<div><br></div>"
-            else:
-                first = False
-            yield f"<div><b>{repo}</b></div>"
-            for item in items:
-                if isinstance(item, Item):
-                    label = "PR" if item.type == "PullRequest" else item.type
-                    title = html.escape(item.title)
-                    count = item.comments.total_count + item.reviews.total_count
-                    suffix = f" <i>({count} comments)</i>" if count else ""
-                    yield (
-                        f'<div>- <a href="{item.url}">{label} #{item.number}</a>'
-                        f": {title}{suffix}</div>"
-                    )
-                else:
-                    title = html.escape(item.info.title)
-                    yield (
-                        f'<div>- <a href="{item.html_url}">Commit {item.sha[:8]}</a>'
-                        f": {title}</div>"
-                    )
-        yield "</div>"
-
-    return "".join(gen())
-
-
-def send_email(
-    address: str,
-    username: str,
-    password: str,
-    subject: str,
-    plain: str,
-    html: str,
-    smtp_host: str = "smtp.gmail.com",
-    smtp_port: int = 465,
-) -> None:
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"{username} <{address}>"
-    msg["To"] = f"{username} <{address}>"
-
-    plain_part = MIMEText(plain, "plain", "UTF-8")
-    html_part = MIMEText(html, "html", "UTF-8")
-    msg.attach(plain_part)
-    msg.attach(html_part)
-
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context) as server:
-        server.login(address, password)
-        server.send_message(msg)
+def send_webhook(webhook_url: str, embed: dict) -> None:
+    payload = {"embeds": [embed]}
+    response = requests.post(webhook_url, json=payload)
+    response.raise_for_status()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser("github-digest")
-    parser.add_argument(
-        "--no-email", action="store_true", help="Skip sending them email"
-    )
-    args = parser.parse_args()
-
-    # Load .env file if present
-    try:
+    with contextlib.suppress(FileNotFoundError):
         with open(ROOT / ".env", "r") as f:
-            for line in f.readlines():
+            for line in f:
                 key, val = line.strip().split("=", 1)
                 val = val.removeprefix('"').removesuffix('"')
                 os.environ[key] = val
-    except FileNotFoundError:
-        pass
-
-    # Read secrets from environment
-    EMAIL_USERNAME = os.environ["EMAIL_USERNAME"]
-    EMAIL_ADDRESS = os.environ["EMAIL_ADDRESS"]
-    EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+    DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
@@ -342,19 +280,8 @@ def main() -> None:
             groups[item.repo.name_with_owner].append(item)
         for commit in commits:
             groups[commit.repo.full_name].append(commit)
-        plain = format_plain(groups)
-        html = format_html(groups)
-        subject = f"GitHub Search Digest: msgspec ({today})"
-        print(plain)
-        if not args.no_email:
-            send_email(
-                EMAIL_ADDRESS,
-                EMAIL_USERNAME,
-                EMAIL_PASSWORD,
-                subject,
-                plain,
-                html,
-            )
+        embed = format_embed(groups)
+        send_webhook(DISCORD_WEBHOOK_URL, embed)
 
 
 if __name__ == "__main__":

@@ -20,11 +20,14 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v2
         with:
-          python-version: "3.11"
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: yezz123/setup-uv@v4
 
       - name: Install Dependencies
         run: |
-          pip install -r requirements-test.txt
+          uv pip install -r requirements-test.txt
 
       - name: pre-commit
         uses: pre-commit/action@v3.0.0
