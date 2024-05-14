@@ -11,7 +11,7 @@ from typing import Literal
 from urllib.parse import quote
 
 import msgspec
-import requests
+import httpx
 
 ROOT = Path(__file__).absolute().parent.parent
 
@@ -137,7 +137,7 @@ class CommitNodesResults(msgspec.Struct, rename="camel"):
 
 
 def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
-    with requests.Session() as session:
+    with httpx.Client() as client:
         search = f"litestar updated:>={after.date()}"
         items = []
         # Fetch recent issues, PRs, and discussions
@@ -151,7 +151,7 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
                     params += f', after: "{cursor}"'
 
                 query = template % params
-                resp = session.post(  # type: ignore
+                resp = client.post(  # type: ignore
                     "https://api.github.com/graphql",
                     headers={"Authorization": f"bearer {token}"},
                     json={"query": query},
@@ -166,7 +166,7 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
 
         # Fetch new repositories that mention Litestar
         query = f"litestar in:name,description,topics created:>={after.date()}"
-        resp = session.get(  # type: ignore
+        resp = client.get(  # type: ignore
             f"https://api.github.com/search/repositories?q={quote(query)}&sort=stars&order=desc",
             headers={
                 "Accept": "application/vnd.github+json",
@@ -217,10 +217,10 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
 def fetch_recent_commits(token: str, after: datetime.datetime) -> list[Commit]:
     commits: list[Commit] = []
 
-    with requests.Session() as session:
+    with httpx.Client() as client:
         # Fetch recent commits. This isn't exposed through graphql currently.
         query = quote(f"litestar committer-date:>={after.date()}")
-        resp = session.get(  # type: ignore
+        resp = client.get(  # type: ignore
             (
                 f"https://api.github.com/search/commits"
                 f"?q={query}&sort=committer-date&order=desc&per_page=100"
@@ -235,7 +235,7 @@ def fetch_recent_commits(token: str, after: datetime.datetime) -> list[Commit]:
         commit_search = msgspec.json.decode(resp.content, type=CommitSearchResults)
 
         if commit_search.items:
-            filter_commits_with_associated_pr(commit_search, session, token, commits)
+            filter_commits_with_associated_pr(commit_search, client, token, commits)
     return [
         commit
         for commit in commits
@@ -245,7 +245,7 @@ def fetch_recent_commits(token: str, after: datetime.datetime) -> list[Commit]:
     ]
 
 
-def filter_commits_with_associated_pr(commit_search, session, token, commits):
+def filter_commits_with_associated_pr(commit_search, client, token, commits):
     """Filter out commits that have an associated PR."""
     node_ids = [commit.node_id for commit in commit_search.items]
 
@@ -254,7 +254,7 @@ def filter_commits_with_associated_pr(commit_search, session, token, commits):
     with open(ROOT / "github-digest" / "commits.graphql", "r") as f:
         template = f.read()
     query = template % msgspec.json.encode(node_ids).decode()
-    resp = session.post(  # type: ignore
+    resp = client.post(  # type: ignore
         "https://api.github.com/graphql",
         headers={"Authorization": f"bearer {token}"},
         json={"query": query},
@@ -303,7 +303,7 @@ def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
 def send_webhook(webhook_url: str, embed: dict) -> None:
     payload = {"embeds": [embed]}
     logging.debug("Payload to send: %s", payload)
-    response = requests.post(webhook_url, json=payload)
+    response = httpx.post(webhook_url, json=payload)
     if response.status_code != 204:
         logging.error("Failed to send webhook: %s", response.content)
     response.raise_for_status()
