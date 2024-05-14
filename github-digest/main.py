@@ -183,7 +183,7 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
             created_at = created_at.replace(tzinfo=datetime.timezone.utc)
             items.append(
                 Item(
-                    type="Repository",
+                    type="Repository",  # type: ignore[arg-type]
                     author=Actor(type="User", login=repo["owner"]["login"]),
                     url=repo["html_url"],
                     created_at=created_at,
@@ -294,7 +294,7 @@ def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
                     f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"
                 )
 
-        embed["fields"].append({"name": repo, "value": field_value, "inline": False})
+        embed["fields"].append({"name": repo, "value": field_value, "inline": False})  # type: ignore[attr-defined]
 
     logging.debug("Formatted embed before sending: %s", embed)
     return embed

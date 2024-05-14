@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/jcrist/automations/actions/workflows/ci.yml/badge.svg)](https://github.com/jcrist/automations/actions/workflows/ci.yml)
 
-A repo for managing various useful GitHub actions.
+Creates a digest of the latest goings-on for a repo
+(soon to be multiple repos!) and posts it to Discord
+via a given webhook.
 
 ~~Stolen~~ Inspired by [@jcrist](https://github.com/jcrist/automations/) :)
 
@@ -14,3 +16,7 @@ A repo for managing various useful GitHub actions.
 
 > [!NOTE]
 > [Makefile](Makefile) is provided for convenience.
+
+## Example
+
+![Example](example.png)
