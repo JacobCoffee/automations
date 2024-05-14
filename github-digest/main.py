@@ -274,7 +274,7 @@ def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
         "thumbnail": {
             "url": "https://raw.githubusercontent.com/litestar-org/branding/main/assets/Branding%20-%20PNG%20-%20Transparent/Badge%20-%20Blue%20and%20Yellow.png"  # noqa: E501
         },
-        "footer": {"text": "I run daily at 1400UTC (9PM Central)"},
+        "footer": {"text": "I run daily at 1400UTC (9AM Central)"},
         "fields": [],
     }
 
