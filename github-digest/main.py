@@ -265,12 +265,12 @@ def main() -> None:
                 key, val = line.strip().split("=", 1)
                 val = val.removeprefix('"').removesuffix('"')
                 os.environ[key] = val
+
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
     DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
-    # Find everything interesting after 9 central (14 UTC) yesterday
     after = datetime.datetime.combine(
         yesterday, datetime.time(14, tzinfo=datetime.timezone.utc)
     )
@@ -285,6 +285,8 @@ def main() -> None:
         for commit in commits:
             groups[commit.repo.full_name].append(commit)
         embed = format_embed(groups)
+
+        logging.debug("Formatted embed: %s", embed)
         send_webhook(DISCORD_WEBHOOK_URL, embed)
 
 
