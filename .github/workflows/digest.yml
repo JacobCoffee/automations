@@ -28,8 +28,6 @@ jobs:
 
       - name: Run
         env:
-          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python github-digest/main.py
