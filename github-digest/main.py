@@ -29,7 +29,17 @@ IGNORE_AUTHORS = {
 IGNORE_REPOS = {
     "litestar-org/litestar",
     "litestar-org/litestar-fullstack",
+    "litestar-org/advanced-alchemy",
+    "litestar-org/type-lens-docs-preview",
+    "litestar-org/type-lens",
+    "litestar-org/dtos",
+    "litestar-org/polyfactory",
+    "cofin/litestar-vite",
+    "cofin/litestar-saq",
     "conda-forge/litestar-feedstock",
+    "conda-forge/evidently-feedstock",
+    "carlsmedstad/aurpkgs",
+    "NixOS/nixpkgs",
 }
 
 
@@ -153,6 +163,39 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
                     cursor = msg.page_info.end_cursor
                 else:
                     break
+
+        # Fetch new repositories that mention Litestar
+        query = f"litestar in:name,description,topics created:>={after.date()}"
+        resp = session.get(  # type: ignore
+            f"https://api.github.com/search/repositories?q={quote(query)}&sort=stars&order=desc",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        resp.raise_for_status()
+        repo_search = resp.json()
+        for repo in repo_search["items"]:
+            created_at = datetime.datetime.strptime(
+                repo["created_at"], "%Y-%m-%dT%H:%M:%SZ"
+            )
+            created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+            items.append(
+                Item(
+                    type="Repository",
+                    author=Actor(type="User", login=repo["owner"]["login"]),
+                    url=repo["html_url"],
+                    created_at=created_at,
+                    last_edited_at=None,
+                    closed_at=None,
+                    repo=Repo(name_with_owner=repo["full_name"]),
+                    number=repo["id"],
+                    title=repo["name"],
+                    comments=Comments(),
+                )
+            )
+
     return [
         item
         for item in items
@@ -225,33 +268,41 @@ def filter_commits_with_associated_pr(commit_search, session, token, commits):
 
 def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
     embed = {
-        "title": "GitHub Search Digest: litestar",
-        "description": "thx jim :)",
+        "title": "GitHub Search Digest: `litestar`",
+        "description": "Recent activity in the Litestar ecosystem",
         "color": 0xEDB641,
+        "thumbnail": {
+            "url": "https://raw.githubusercontent.com/litestar-org/branding/main/assets/Branding%20-%20PNG%20-%20Transparent/Badge%20-%20Blue%20and%20Yellow.png"  # noqa: E501
+        },
+        "footer": {"text": "I run daily at 1400UTC (9PM Central)"},
         "fields": [],
     }
 
     for repo, items in sorted(groups.items()):
-        field = {"name": repo, "value": "", "inline": False}
+        field_value = ""
         for item in items:
             if isinstance(item, Item):
-                label = "PR" if item.type == "PullRequest" else item.type
-                count = item.comments.total_count + item.reviews.total_count
-                suffix = f" ({count} comments)" if count else ""
-                field["value"] += (  # type: ignore[operator]
-                    f"- [{label} #{item.number}]({item.url}): {item.title}{suffix}\n"
-                )
+                if item.type == "Repository":
+                    field_value += f"- [New Repository]({item.url}): {item.title}\n"
+                else:
+                    label = "PR" if item.type == "PullRequest" else item.type
+                    field_value += (
+                        f"- [{label} #{item.number}]({item.url}): {item.title}\n"
+                    )
             else:
-                field["value"] += (  # type: ignore[operator]
+                field_value += (
                     f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"
                 )
-        embed["fields"].append(field)
 
+        embed["fields"].append({"name": repo, "value": field_value, "inline": False})
+
+    logging.debug("Formatted embed before sending: %s", embed)
     return embed
 
 
 def send_webhook(webhook_url: str, embed: dict) -> None:
     payload = {"embeds": [embed]}
+    logging.debug("Payload to send: %s", payload)
     response = requests.post(webhook_url, json=payload)
     if response.status_code != 204:
         logging.error("Failed to send webhook: %s", response.content)
@@ -268,12 +319,11 @@ def main() -> None:
 
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
     DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
-    LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL", "INFO")
-
-    logging.basicConfig(level=LOGGING_LEVEL)
+    DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
+    logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
 
     today = datetime.date.today()
-    yesterday = today - datetime.timedelta(days=1)
+    yesterday = today - datetime.timedelta(days=14)
     after = datetime.datetime.combine(
         yesterday, datetime.time(14, tzinfo=datetime.timezone.utc)
     )
@@ -289,7 +339,7 @@ def main() -> None:
             groups[commit.repo.full_name].append(commit)
         embed = format_embed(groups)
 
-        logging.debug("Formatted embed: %s", embed)
+        logging.debug("Formatted embed before sending: %s", embed)
         send_webhook(DISCORD_WEBHOOK_URL, embed)
 
 
