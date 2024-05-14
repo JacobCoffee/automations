@@ -26,7 +26,8 @@ IGNORE_AUTHORS = {
 }
 
 IGNORE_REPOS = {
-    "litestar-org/msgspec",
+    "litestar-org/litestar",
+    "litestar-org/litestar-fullstack",
     "conda-forge/litestar-feedstock",
 }
 
