@@ -268,6 +268,9 @@ def main() -> None:
 
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
     DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
+    LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL", "INFO")
+
+    logging.basicConfig(level=LOGGING_LEVEL)
 
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
