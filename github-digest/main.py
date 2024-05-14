@@ -238,12 +238,12 @@ def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
                 label = "PR" if item.type == "PullRequest" else item.type
                 count = item.comments.total_count + item.reviews.total_count
                 suffix = f" ({count} comments)" if count else ""
-                field["value"] += (
-                    f"- [{label} #{item.number}]({item.url}): {item.title}{suffix}\n"  # type: ignore[operator]
+                field["value"] += (  # type: ignore[operator]
+                    f"- [{label} #{item.number}]({item.url}): {item.title}{suffix}\n"
                 )
             else:
-                field["value"] += (
-                    f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"  # type: ignore[operator]
+                field["value"] += (  # type: ignore[operator]
+                    f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"
                 )
         embed["fields"].append(field)
 
