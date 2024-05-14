@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import logging
 import os
 
 from collections import defaultdict
@@ -237,14 +238,14 @@ def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
                 label = "PR" if item.type == "PullRequest" else item.type
                 count = item.comments.total_count + item.reviews.total_count
                 suffix = f" ({count} comments)" if count else ""
-                field["value"] += (  # type: ignore[operator]
-                    f"- [{label} #{item.number}]({item.url}): {item.title}{suffix}\n"
+                field["value"] += (
+                    f"- [{label} #{item.number}]({item.url}): {item.title}{suffix}\n"  # type: ignore[operator]
                 )
             else:
-                field["value"] += (  # type: ignore[operator]
-                    f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"
+                field["value"] += (
+                    f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"  # type: ignore[operator]
                 )
-        embed["fields"].append(field)  # type: ignore[attr-defined]
+        embed["fields"].append(field)
 
     return embed
 
@@ -252,6 +253,8 @@ def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
 def send_webhook(webhook_url: str, embed: dict) -> None:
     payload = {"embeds": [embed]}
     response = requests.post(webhook_url, json=payload)
+    if response.status_code != 204:
+        logging.error("Failed to send webhook: %s", response.content)
     response.raise_for_status()
 
 
