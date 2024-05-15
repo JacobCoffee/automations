@@ -366,7 +366,7 @@ class CLI(msgspec.Struct):
     ] = ""
     webhook: Annotated[
         str,
-        cappa.Arg(long=True, default=Env("DISCORD_WEBHOOK_URL")),
+        cappa.Arg(long=True, default=Env("DISCORD_COMMUNITY_WEBHOOK_URL", "DISCORD_MAINTAINER_WEBHOOK_URL")),
         Doc("The Discord webhook URL to send the daily digest to."),
     ] = ""
     age: Annotated[
