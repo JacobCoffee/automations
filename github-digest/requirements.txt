@@ -1,2 +1,4 @@
 msgspec
 httpx
+cappa
+python-dotenv
