@@ -36,4 +36,4 @@ jobs:
         env:
           DISCORD_MAINTAINER_WEBHOOK_URL: ${{ secrets.DISCORD_MAINTAINER_WEBHOOK_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python github-digest/main.py -t litestar -t polyfactory -t advanced-alchemy --webhook "$DISCORD_MAINTAINER_WEBHOOK_URL" --token "$GITHUB_TOKEN
+        run: python github-digest/main.py -t litestar -t polyfactory -t advanced-alchemy --webhook "$DISCORD_MAINTAINER_WEBHOOK_URL" --token "$GITHUB_TOKEN"
