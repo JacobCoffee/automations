@@ -30,10 +30,10 @@ jobs:
         env:
           DISCORD_COMMUNITY_WEBHOOK_URL: ${{ secrets.DISCORD_COMMUNITY_WEBHOOK_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python github-digest/main.py -t litestar --webhook $DISCORD_COMMUNITY_WEBHOOK_URL
+        run: python github-digest/main.py -t litestar --webhook "$DISCORD_COMMUNITY_WEBHOOK_URL"
 
       - name: Run maintainer daily digest
         env:
-          DISCORD_COMMUNITY_WEBHOOK_URL: ${{ secrets.DISCORD_MAINTAINER_WEBHOOK_URL }}
+          DISCORD_MAINTAINER_WEBHOOK_URL: ${{ secrets.DISCORD_MAINTAINER_WEBHOOK_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python github-digest/main.py -t litestar -t polyfactory -t advanced-alchemy --webhook $DISCORD_MAINTAINER_WEBHOOK_URL
+        run: python github-digest/main.py -t litestar -t polyfactory -t advanced-alchemy --webhook "$DISCORD_MAINTAINER_WEBHOOK_URL"
