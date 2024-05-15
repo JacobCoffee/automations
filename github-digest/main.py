@@ -51,8 +51,6 @@ IGNORE_REPOS = {
     "NixOS/nixpkgs",
 }
 
-SEARCH_TERMS = Literal["litestar", "polyfactory", "advanced-alchemy"]
-
 
 class Repo(msgspec.Struct, rename="camel"):
     name_with_owner: str
@@ -324,7 +322,7 @@ def main(cli: CLI) -> None:
     yesterday = today - datetime.timedelta(days=cli.age)
     after = datetime.datetime.combine(yesterday, datetime.time(14, tzinfo=datetime.timezone.utc))
 
-    for search_term in cli.term or SEARCH_TERMS:  # type: ignore[union-attr]
+    for search_term in cli.term:  # type: ignore[union-attr]
         logging.debug("Fetching recent items and commits for search term: %s", search_term)
         items = fetch_recent_items(cli.token, after, search_term)
         commits = fetch_recent_commits(cli.token, after, search_term)
@@ -346,14 +344,13 @@ class CLI(msgspec.Struct):
     """GitHub Daily Digest CLI."""
 
     term: Annotated[
-        list[SEARCH_TERMS] | None,
+        list[Literal["litestar", "polyfactory", "advanced-alchemy"]],
         cappa.Arg(
             short=True,
             long=True,
-            default="litestar",
         ),
         Doc("The search term(s) to use for fetching recent items and commits."),
-    ] = None
+    ] = msgspec.field(default_factory=lambda: ["litestar"])
     debug: Annotated[
         bool,
         cappa.Arg(short=True, long=True, default=Env("DEBUG", default=False)),
