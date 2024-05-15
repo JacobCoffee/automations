@@ -7,12 +7,19 @@ import os
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Annotated
 from urllib.parse import quote
+from dotenv import load_dotenv
 
+import cappa
 import msgspec
 import httpx
+from cappa import Env
+from typing_extensions import Doc
 
+load_dotenv()
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 ROOT = Path(__file__).absolute().parent.parent
 
 IGNORE_AUTHORS = {
@@ -38,9 +45,13 @@ IGNORE_REPOS = {
     "cofin/litestar-saq",
     "conda-forge/litestar-feedstock",
     "conda-forge/evidently-feedstock",
+    "conda-forge/polyfactory-feedstock",
+    "conda-forge/feedstocks",
     "carlsmedstad/aurpkgs",
     "NixOS/nixpkgs",
 }
+
+SEARCH_TERMS = Literal["litestar", "polyfactory", "advanced-alchemy"]
 
 
 class Repo(msgspec.Struct, rename="camel"):
@@ -136,9 +147,9 @@ class CommitNodesResults(msgspec.Struct, rename="camel"):
     data: Data
 
 
-def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
+def fetch_recent_items(token: str, after: datetime.datetime, search_term: str) -> list[Item]:
     with httpx.Client() as client:
-        search = f"litestar updated:>={after.date()}"
+        search = f"{search_term} updated:>={after.date()}"
         items = []
         # Fetch recent issues, PRs, and discussions
         for file in ["issues.graphql", "discussions.graphql"]:
@@ -151,7 +162,7 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
                     params += f', after: "{cursor}"'
 
                 query = template % params
-                resp = client.post(  # type: ignore
+                resp = client.post(
                     "https://api.github.com/graphql",
                     headers={"Authorization": f"bearer {token}"},
                     json={"query": query},
@@ -164,9 +175,9 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
                 else:
                     break
 
-        # Fetch new repositories that mention Litestar
-        query = f"litestar in:name,description,topics created:>={after.date()}"
-        resp = client.get(  # type: ignore
+        # Fetch new repositories that mention the search term
+        query = f"{search_term} in:name,description,topics created:>={after.date()}"  # Changed to include search_term
+        resp = client.get(
             f"https://api.github.com/search/repositories?q={quote(query)}&sort=stars&order=desc",
             headers={
                 "Accept": "application/vnd.github+json",
@@ -177,13 +188,11 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
         resp.raise_for_status()
         repo_search = resp.json()
         for repo in repo_search["items"]:
-            created_at = datetime.datetime.strptime(
-                repo["created_at"], "%Y-%m-%dT%H:%M:%SZ"
-            )
+            created_at = datetime.datetime.strptime(repo["created_at"], "%Y-%m-%dT%H:%M:%SZ")
             created_at = created_at.replace(tzinfo=datetime.timezone.utc)
             items.append(
                 Item(
-                    type="Repository",  # type: ignore[arg-type]
+                    type="Repository",
                     author=Actor(type="User", login=repo["owner"]["login"]),
                     url=repo["html_url"],
                     created_at=created_at,
@@ -214,17 +223,14 @@ def fetch_recent_items(token: str, after: datetime.datetime) -> list[Item]:
     ]
 
 
-def fetch_recent_commits(token: str, after: datetime.datetime) -> list[Commit]:
+def fetch_recent_commits(token: str, after: datetime.datetime, search_term: str) -> list[Commit]:
     commits: list[Commit] = []
 
     with httpx.Client() as client:
         # Fetch recent commits. This isn't exposed through graphql currently.
-        query = quote(f"litestar committer-date:>={after.date()}")
-        resp = client.get(  # type: ignore
-            (
-                f"https://api.github.com/search/commits"
-                f"?q={query}&sort=committer-date&order=desc&per_page=100"
-            ),
+        query = quote(f"{search_term} committer-date:>={after.date()}")
+        resp = client.get(
+            (f"https://api.github.com/search/commits" f"?q={query}&sort=committer-date&order=desc&per_page=100"),
             headers={
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {token}",
@@ -254,7 +260,7 @@ def filter_commits_with_associated_pr(commit_search, client, token, commits):
     with open(ROOT / "github-digest" / "commits.graphql", "r") as f:
         template = f.read()
     query = template % msgspec.json.encode(node_ids).decode()
-    resp = client.post(  # type: ignore
+    resp = client.post(
         "https://api.github.com/graphql",
         headers={"Authorization": f"bearer {token}"},
         json={"query": query},
@@ -266,13 +272,13 @@ def filter_commits_with_associated_pr(commit_search, client, token, commits):
             commits.append(commit)
 
 
-def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
+def format_embed(search_term: str, groups: dict[str, list[Item | Commit]]) -> dict:
     embed = {
-        "title": "GitHub Search Digest: `litestar`",
+        "title": f"GitHub Search Digest: `{search_term}`",
         "description": "Recent activity in the Litestar ecosystem",
         "color": 0xEDB641,
         "thumbnail": {
-            "url": "https://raw.githubusercontent.com/litestar-org/branding/main/assets/Branding%20-%20PNG%20-%20Transparent/Badge%20-%20Blue%20and%20Yellow.png"  # noqa: E501
+            "url": "https://raw.githubusercontent.com/litestar-org/branding/main/assets/Branding%20-%20PNG%20-%20Transparent/Badge%20-%20Blue%20and%20Yellow.png"
         },
         "footer": {"text": "I run daily at 1400UTC (9AM Central)"},
         "fields": [],
@@ -286,13 +292,9 @@ def format_embed(groups: dict[str, list[Item | Commit]]) -> dict:
                     field_value += f"- [New Repository]({item.url}): {item.title}\n"
                 else:
                     label = "PR" if item.type == "PullRequest" else item.type
-                    field_value += (
-                        f"- [{label} #{item.number}]({item.url}): {item.title}\n"
-                    )
+                    field_value += f"- [{label} #{item.number}]({item.url}): {item.title}\n"
             else:
-                field_value += (
-                    f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"
-                )
+                field_value += f"- [Commit {item.sha[:8]}]({item.html_url}): {item.info.title}\n"
 
         embed["fields"].append({"name": repo, "value": field_value, "inline": False})  # type: ignore[attr-defined]
 
@@ -309,7 +311,7 @@ def send_webhook(webhook_url: str, embed: dict) -> None:
     response.raise_for_status()
 
 
-def main() -> None:
+def main(cli: CLI) -> None:
     with contextlib.suppress(FileNotFoundError):
         with open(ROOT / ".env", "r") as f:
             for line in f:
@@ -317,31 +319,62 @@ def main() -> None:
                 val = val.removeprefix('"').removesuffix('"')
                 os.environ[key] = val
 
-    GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
-    DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
-    DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
-    logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
-
+    logging.basicConfig(level=logging.DEBUG if cli.debug else logging.INFO)
     today = datetime.date.today()
-    yesterday = today - datetime.timedelta(days=1)
-    after = datetime.datetime.combine(
-        yesterday, datetime.time(14, tzinfo=datetime.timezone.utc)
-    )
+    yesterday = today - datetime.timedelta(days=cli.age)
+    after = datetime.datetime.combine(yesterday, datetime.time(14, tzinfo=datetime.timezone.utc))
 
-    items = fetch_recent_items(GITHUB_TOKEN, after)
-    commits = fetch_recent_commits(GITHUB_TOKEN, after)
+    for search_term in cli.term or SEARCH_TERMS:
+        logging.debug("Fetching recent items and commits for search term: %s", search_term)
+        items = fetch_recent_items(cli.token, after, search_term)
+        commits = fetch_recent_commits(cli.token, after, search_term)
 
-    if items or commits:
-        groups: defaultdict[str, list[Item | Commit]] = defaultdict(list)
-        for item in items:
-            groups[item.repo.name_with_owner].append(item)
-        for commit in commits:
-            groups[commit.repo.full_name].append(commit)
-        embed = format_embed(groups)
+        if items or commits:
+            groups: defaultdict[str, list[Item | Commit]] = defaultdict(list)
+            for item in items:
+                groups[item.repo.name_with_owner].append(item)
+            for commit in commits:
+                groups[commit.repo.full_name].append(commit)
+            embed = format_embed(search_term, groups)
 
-        logging.debug("Formatted embed before sending: %s", embed)
-        send_webhook(DISCORD_WEBHOOK_URL, embed)
+            logging.debug("Formatted embed before sending: %s", embed)
+            send_webhook(cli.webhook, embed)
+
+
+@cappa.command(invoke=main)
+class CLI(msgspec.Struct):
+    """GitHub Daily Digest CLI."""
+
+    term: Annotated[
+        list[SEARCH_TERMS] | None,
+        cappa.Arg(
+            short=True,
+            long=True,
+            default="litestar",
+        ),
+        Doc("The search term(s) to use for fetching recent items and commits."),
+    ] = None
+    debug: Annotated[
+        bool,
+        cappa.Arg(short=True, long=True, default=Env("DEBUG", default=False)),
+        Doc("Enable debug mode. Checks the DEBUG environment variable if not provided."),
+    ] = False
+    token: Annotated[
+        str,
+        cappa.Arg(long=True, default=Env("GITHUB_TOKEN")),
+        Doc("The GitHub API token to use for fetching data."),
+    ] = ""
+    webhook: Annotated[
+        str,
+        cappa.Arg(long=True, default=Env("DISCORD_WEBHOOK_URL")),
+        Doc("The Discord webhook URL to send the daily digest to."),
+    ] = ""
+    age: Annotated[
+        int,
+        cappa.Arg(long=True, default=1),
+        Doc("The age of the data to fetch in days. Defaults to 1 day."),
+    ] = 1
 
 
 if __name__ == "__main__":
-    main()
+    cappa.invoke(CLI, deps=[load_dotenv])
