@@ -192,7 +192,7 @@ def fetch_recent_items(token: str, after: datetime.datetime, search_term: str) -
             created_at = created_at.replace(tzinfo=datetime.timezone.utc)
             items.append(
                 Item(
-                    type="Repository",
+                    type="Repository",  # type: ignore[arg-type]
                     author=Actor(type="User", login=repo["owner"]["login"]),
                     url=repo["html_url"],
                     created_at=created_at,
@@ -324,7 +324,7 @@ def main(cli: CLI) -> None:
     yesterday = today - datetime.timedelta(days=cli.age)
     after = datetime.datetime.combine(yesterday, datetime.time(14, tzinfo=datetime.timezone.utc))
 
-    for search_term in cli.term or SEARCH_TERMS:
+    for search_term in cli.term or SEARCH_TERMS:  # type: ignore[union-attr]
         logging.debug("Fetching recent items and commits for search term: %s", search_term)
         items = fetch_recent_items(cli.token, after, search_term)
         commits = fetch_recent_commits(cli.token, after, search_term)
