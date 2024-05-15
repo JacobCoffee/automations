@@ -31,6 +31,7 @@ IGNORE_AUTHORS = {
     "peterschutt",
     "cofin",
     "dependabot",
+    "Patbox",
 }
 
 IGNORE_REPOS = {
@@ -49,6 +50,8 @@ IGNORE_REPOS = {
     "conda-forge/feedstocks",
     "carlsmedstad/aurpkgs",
     "NixOS/nixpkgs",
+    "Patbox/PolyFactory",
+    "Patbox/polydex",
 }
 
 
@@ -147,7 +150,7 @@ class CommitNodesResults(msgspec.Struct, rename="camel"):
 
 def fetch_recent_items(token: str, after: datetime.datetime, search_term: str) -> list[Item]:
     with httpx.Client() as client:
-        search = f"{search_term} updated:>={after.date()}"
+        search = f"{search_term} -alchemy updated:>={after.date()}"
         items = []
         # Fetch recent issues, PRs, and discussions
         for file in ["issues.graphql", "discussions.graphql"]:
@@ -174,7 +177,7 @@ def fetch_recent_items(token: str, after: datetime.datetime, search_term: str) -
                     break
 
         # Fetch new repositories that mention the search term
-        query = f"{search_term} in:name,description,topics created:>={after.date()}"  # Changed to include search_term
+        query = f"{search_term} -alchemy in:name,description,topics created:>={after.date()}"  # Changed to include search_term
         resp = client.get(
             f"https://api.github.com/search/repositories?q={quote(query)}&sort=stars&order=desc",
             headers={
@@ -226,7 +229,7 @@ def fetch_recent_commits(token: str, after: datetime.datetime, search_term: str)
 
     with httpx.Client() as client:
         # Fetch recent commits. This isn't exposed through graphql currently.
-        query = quote(f"{search_term} committer-date:>={after.date()}")
+        query = quote(f"{search_term} -alchemy committer-date:>={after.date()}")
         resp = client.get(
             (f"https://api.github.com/search/commits" f"?q={query}&sort=committer-date&order=desc&per_page=100"),
             headers={
