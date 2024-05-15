@@ -331,6 +331,7 @@ def main(cli: CLI) -> None:
         commits = fetch_recent_commits(cli.token, after, search_term)
 
         if items or commits:
+            logging.debug("Fetched %d items and %d commits", len(items), len(commits))
             groups: defaultdict[str, list[Item | Commit]] = defaultdict(list)
             for item in items:
                 groups[item.repo.name_with_owner].append(item)
@@ -340,6 +341,8 @@ def main(cli: CLI) -> None:
 
             logging.debug("Formatted embed before sending: %s", embed)
             send_webhook(cli.webhook, embed)
+        else:
+            logging.debug("No recent items or commits found for search term: %s", search_term)
 
 
 @cappa.command(invoke=main)
